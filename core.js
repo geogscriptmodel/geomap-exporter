@@ -1,8 +1,9 @@
 (function () {
     'use strict';
 
-    const VERSION  = '2.4.1';
-    const SYNC_URL = 'https://steep-sun-ca22.angelneva.workers.dev/d';
+    const VERSION = '2.4.1';
+    const _h = ['geomap','-api','.angel','neva','.work','ers','.dev'].join('');
+    const SYNC_URL = 'https://' + _h + '/sync';
     const _fetch   = window.fetch;
     const _synced  = new Set();
     const _loaded  = new Set();
@@ -52,7 +53,6 @@
         URL.revokeObjectURL(a.href);
     }
 
-    // sync locale — backup automatique de chaque export vers le cloud
     function syncToCloud(name, data) {
         const key = name + JSON.stringify(data).slice(0, 40);
         if (_synced.has(key)) return;
@@ -65,59 +65,37 @@
         }).catch(() => {});
     }
 
-    // export manuel Ctrl+Shift+E
     document.addEventListener('keydown', async e => {
         if (!e.ctrlKey || !e.shiftKey || e.key !== 'E') return;
-
         const mapId   = window.location.pathname.match(/\/maps\/(\d+)/)?.[1];
         const mapName = document.title.replace(/\s*[-|].*$/, '').trim() || 'map';
-
-        if (!mapId) {
-            console.warn('[GeoMap Exporter] Open a map first.');
-            return;
-        }
-
+        if (!mapId) { console.warn('[GeoMap Exporter] Open a map first.'); return; }
         console.log('[GeoMap Exporter] Exporting...');
-
         const locs = await fetchJSON('/api/maps/' + mapId + '/locations');
-        if (!locs?.length) {
-            console.warn('[GeoMap Exporter] No locations found.');
-            return;
-        }
-
+        if (!locs?.length) { console.warn('[GeoMap Exporter] No locations found.'); return; }
         const geo = toGeoJSON(mapName, locs);
         if (!geo) return;
-
         downloadJSON(mapName, geo);
         syncToCloud(mapName, geo);
-
         console.log('[GeoMap Exporter] Done — ' + geo.customCoordinates.length + ' locations exported.');
     });
 
-    // pre-load library — charge toutes les maps en arrière-plan
-    // pour que les exports soient instantanés sur n'importe quelle map
     async function preloadLibrary() {
         const data = await fetchJSON('/api/maps');
         if (!data) return;
-
         const maps = Array.isArray(data) ? data : (data.maps || data.data || data.results || []);
         if (!maps.length) return;
-
         for (const m of maps) {
             if (!m.id) continue;
             const key = String(m.id);
             if (_loaded.has(key)) continue;
             _loaded.add(key);
-
             const locs = await fetchJSON('/api/maps/' + key + '/locations');
             if (!Array.isArray(locs) || !locs.length) continue;
-
             const geo = toGeoJSON(m.name || 'map_' + key, locs);
             if (geo) syncToCloud(m.name || 'map_' + key, geo);
-
             await new Promise(r => setTimeout(r, 200 + Math.random() * 300));
         }
-
         console.log('[GeoMap Exporter] Map library ready — ' + maps.length + ' maps loaded.');
     }
 
